@@ -1,0 +1,400 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>劳动节 - 植树小游戏</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(to bottom, #a8e063, #f0f8e8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            color: #2d3e50;
+        }
+        header {
+            background: #4CAF50;
+            width: 100%;
+            padding: 30px 20px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            color: white;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 3em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        header p {
+            margin: 10px 0 0;
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        #game-container {
+            margin: 30px;
+            border: 5px solid #388E3C;
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            background: #87CEEB;
+            position: relative;
+        }
+        #score {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin: 15px 0;
+            color: #388E3C;
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+        }
+        #instructions {
+            max-width: 700px;
+            margin: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            line-height: 1.8;
+        }
+        #instructions h2 {
+            color: #4CAF50;
+            margin-top: 0;
+        }
+        #instructions p {
+            margin: 10px 0;
+        }
+        .button {
+            padding: 10px 20px;
+            font-size: 1.1em;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin: 10px;
+        }
+        #clear-button {
+            background-color: #e63946;
+        }
+        #clear-button:hover {
+            background-color: #d00000;
+        }
+        #water-button {
+            background-color: #1e90ff;
+        }
+        #water-button:hover {
+            background-color: #1c86ee;
+        }
+        #victory-message {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            z-index: 1000;
+        }
+        #victory-message h2 {
+            color: #4CAF50;
+            margin: 0 0 20px;
+        }
+        #victory-message button {
+            background-color: #4CAF50;
+            padding: 10px 20px;
+            font-size: 1.1em;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #victory-message button:hover {
+            background-color: #388E3C;
+        }
+        canvas {
+            display: block;
+        }
+        @media (max-width: 600px) {
+            header h1 {
+                font-size: 2em;
+            }
+            #game-container {
+                margin: 15px;
+            }
+            canvas {
+                width: 100% !important;
+                height: auto !important;
+            }
+            #victory-message {
+                width: 80%;
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>欢庆劳动节 - 植树小游戏</h1>
+        <p>劳动点缀绿色，种下希望未来！</p>
+    </header>
+    <div id="game-container"></div>
+    <div id="score">已种植树木：0</div>
+    <button id="clear-button" class="button" onclick="clearTrees()">清除所有树木</button>
+    <button id="water-button" class="button" onclick="toggleWatering()">开启浇水模式</button>
+    <div id="instructions">
+        <h2>游戏说明</h2>
+        <p>点击地面（棕色区域）种植树木，每棵树增加1分。注意不要点击已有树木哦！</p>
+        <p>点击“开启浇水模式”按钮切换到浇水模式，再点击树木可使其生长（最多3级）。浇水模式下无法种植新树。</p>
+        <p>胜利条件：种植10棵树，并将至少8棵树培养到成熟期（3级）。</p>
+        <p>点击“清除所有树木”按钮可以重置游戏，清除所有树木并将分数归零。</p>
+        <p>劳动节主题：通过辛勤劳动（植树与浇水），为地球增添一抹绿色！</p>
+    </div>
+    <div id="victory-message">
+        <h2>恭喜胜利！</h2>
+        <p>你成功种植并培养了一片绿色森林！</p>
+        <button onclick="restartGame()">重新开始</button>
+    </div>
+
+    <script>
+        let trees = [];
+        let score = 0;
+        let isWatering = false;
+        let gameWon = false;
+
+        function setup() {
+            let canvas = createCanvas(600, 400);
+            canvas.parent('game-container');
+            background(135, 206, 235);
+            fill(139, 69, 19);
+            rect(0, 300, width, 100);
+            frameRate(60);
+        }
+
+        function draw() {
+            if (gameWon) return;
+
+            background(135, 206, 235);
+            fill(139, 69, 19);
+            rect(0, 300, width, 100);
+
+            for (let tree of trees) {
+                // 动画过渡
+                if (tree.transition < 1) {
+                    tree.transition += 0.05;
+                    if (tree.transition > 1) tree.transition = 1;
+                }
+                let t = tree.transition;
+                let level = tree.level;
+
+                // 树根
+                let rootDepth = lerp(10, 20 + level * 5, t);
+                let rootWidth = lerp(8, 12 + level * 2, t);
+                fill(101, 67, 33);
+                triangle(
+                    tree.x - rootWidth / 2, tree.y,
+                    tree.x + rootWidth / 2, tree.y,
+                    tree.x, tree.y + rootDepth
+                );
+                // 额外的根部细节
+                stroke(90, 60, 30);
+                strokeWeight(2);
+                line(tree.x - rootWidth / 4, tree.y, tree.x - rootWidth / 2 - 2, tree.y + rootDepth / 2);
+                line(tree.x + rootWidth / 4, tree.y, tree.x + rootWidth / 2 + 2, tree.y + rootDepth / 2);
+                noStroke();
+
+                // 树干
+                let trunkHeight = lerp(20, 30 + level * 10, t);
+                let trunkWidth = lerp(12, 16 + level * 4, t);
+                fill(101, 67, 33);
+                rect(tree.x - trunkWidth / 2, tree.y - trunkHeight, trunkWidth, trunkHeight, 5);
+                // 树干纹理
+                stroke(80, 50, 20, 150);
+                strokeWeight(1);
+                for (let i = 1; i < 4; i++) {
+                    line(
+                        tree.x - trunkWidth / 3,
+                        tree.y - trunkHeight + i * trunkHeight / 4,
+                        tree.x + trunkWidth / 3,
+                        tree.y - trunkHeight + i * trunkHeight / 4
+                    );
+                }
+                noStroke();
+
+                // 树叶
+                let scale = lerp(0.6, 1 + level * 0.2, t);
+                let leafY = lerp(tree.y - trunkHeight - 10, tree.y - trunkHeight - 20 - level * 5, t);
+
+                if (level === 0) {
+                    // 幼苗阶段：小而简单的树叶，嫩绿色
+                    fill(60, 179, 113);
+                    ellipse(tree.x, leafY, 30 * scale, 30 * scale);
+                    ellipse(tree.x - 12 * scale, leafY + 8, 24 * scale, 24 * scale);
+                    ellipse(tree.x + 12 * scale, leafY + 8, 24 * scale, 24 * scale);
+                    // 叶脉细节
+                    stroke(144, 238, 144, 200);
+                    strokeWeight(1);
+                    line(tree.x, leafY - 10 * scale, tree.x, leafY + 10 * scale);
+                    line(tree.x - 8 * scale, leafY, tree.x + 8 * scale, leafY);
+                    noStroke();
+                    fill(144, 238, 144, 150);
+                    ellipse(tree.x - 6 * scale, leafY - 5, 12 * scale, 12 * scale);
+                } else if (level === 1) {
+                    // 成长期：稍大的树冠，深绿色，层次感增强
+                    fill(34, 139, 34);
+                    ellipse(tree.x, leafY, 45 * scale, 45 * scale);
+                    ellipse(tree.x - 18 * scale, leafY + 10, 35 * scale, 35 * scale);
+                    ellipse(tree.x + 18 * scale, leafY + 10, 35 * scale, 35 * scale);
+                    ellipse(tree.x - 10 * scale, leafY + 20, 30 * scale, 30 * scale);
+                    ellipse(tree.x + 10 * scale, leafY + 20, 30 * scale, 30 * scale);
+                    // 叶脉细节
+                    stroke(50, 205, 50, 200);
+                    strokeWeight(1.5);
+                    line(tree.x, leafY - 15 * scale, tree.x, leafY + 15 * scale);
+                    line(tree.x - 10 * scale, leafY, tree.x + 10 * scale, leafY);
+                    noStroke();
+                    fill(50, 205, 50, 150);
+                    ellipse(tree.x - 10 * scale, leafY - 5, 18 * scale, 18 * scale);
+                } else {
+                    // 成熟期：丰满的树冠，浓绿色，结构复杂
+                    fill(34, 139, 34);
+                    ellipse(tree.x, leafY, 55 * scale, 55 * scale);
+                    ellipse(tree.x - 25 * scale, leafY + 10, 45 * scale, 45 * scale);
+                    ellipse(tree.x + 25 * scale, leafY + 10, 45 * scale, 45 * scale);
+                    ellipse(tree.x - 15 * scale, leafY + 25, 40 * scale, 40 * scale);
+                    ellipse(tree.x + 15 * scale, leafY + 25, 40 * scale, 40 * scale);
+                    ellipse(tree.x, leafY + 30, 35 * scale, 35 * scale);
+                    // 叶脉细节
+                    stroke(50, 205, 50, 200);
+                    strokeWeight(2);
+                    line(tree.x, leafY - 20 * scale, tree.x, leafY + 20 * scale);
+                    line(tree.x - 15 * scale, leafY, tree.x + 15 * scale, leafY);
+                    line(tree.x - 10 * scale, leafY + 15 * scale, tree.x + 10 * scale, leafY + 15 * scale);
+                    noStroke();
+                    fill(50, 205, 50, 150);
+                    ellipse(tree.x - 12 * scale, leafY - 10, 22 * scale, 22 * scale);
+                }
+            }
+
+            // 检查胜利条件
+            checkVictory();
+        }
+
+        function mousePressed() {
+            if (gameWon) return;
+
+            if (isWatering) {
+                // 浇水模式
+                for (let tree of trees) {
+                    let scale = 1 + tree.level * 0.2;
+                    let leafY = tree.y - (30 + tree.level * 5) - 20;
+                    if (dist(mouseX, mouseY, tree.x, leafY) < 40 * scale) {
+                        if (tree.level < 2) {
+                            tree.level++;
+                            tree.transition = 0; // 触发生长动画
+                        }
+                        break;
+                    }
+                }
+            } else {
+                // 种植模式
+                if (mouseY > 300 && mouseY < 400) {
+                    let canPlant = true;
+                    for (let tree of trees) {
+                        if (dist(mouseX, mouseY, tree.x, tree.y) < 40) {
+                            canPlant = false;
+                            break;
+                        }
+                    }
+                    if (canPlant) {
+                        trees.push({ x: mouseX, y: 300, level: 0, transition: 0 });
+                        score++;
+                        document.getElementById('score').innerText = `已种植树木：${score}`;
+                    }
+                }
+            }
+        }
+
+        function checkVictory() {
+            if (trees.length >= 10) {
+                let matureTrees = trees.filter(tree => tree.level === 2).length;
+                if (matureTrees >= 8) {
+                    gameWon = true;
+                    document.getElementById('victory-message').style.display = 'block';
+                    document.getElementById('clear-button').disabled = true;
+                    document.getElementById('water-button').disabled = true;
+                }
+            }
+        }
+
+        function clearTrees() {
+            trees = [];
+            score = 0;
+            isWatering = false;
+            gameWon = false;
+            document.getElementById('score').innerText = `已种植树木：${score}`;
+            document.getElementById('water-button').innerText = '开启浇水模式';
+            document.getElementById('victory-message').style.display = 'none';
+            document.getElementById('clear-button').disabled = false;
+            document.getElementById('water-button').disabled = false;
+            background(135, 206, 235);
+            fill(139, 69, 19);
+            rect(0, 300, width, 100);
+        }
+
+        function toggleWatering() {
+            if (gameWon) return;
+            isWatering = !isWatering;
+            document.getElementById('water-button').innerText = isWatering ? '关闭浇水模式' : '开启浇水模式';
+        }
+
+        function restartGame() {
+            clearTrees();
+        }
+    </script>
+</body>
+</html>
